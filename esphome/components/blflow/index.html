@@ -1,0 +1,375 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>BL SmartFlow</title>
+  <link rel="icon" href="data:,">
+  <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
+  <style>
+    :root { --primary: rgb(68,100,136); --accent: rgb(56,137,229); --error: rgb(191,95,95); --ok: rgb(46,160,90); }
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body { min-height: 100vh; display: flex; justify-content: center; align-items: flex-start;
+           background: rgb(28,75,114); font-family: Arial, sans-serif; color: #fff; }
+    #particleCanvas { position: fixed; inset: 0; width: 100%; height: 100%; z-index: -1; }
+    .container { display: flex; flex-direction: column; align-items: center; padding: 2rem 16px; max-width: 900px; width: 100%; }
+    .logo { display: flex; align-items: center; margin-bottom: 1rem; }
+    .logo-text { font-size: 2rem; font-weight: bold; text-shadow: 1px 1px #000; }
+    .fan-stack { position: relative; width: 80px; height: 80px; margin-right: 20px; }
+    .fan-stack img { position: absolute; inset: 0; width: 80px; height: 80px; object-fit: contain; }
+    .fanshell { z-index: 1; } .fanblades { z-index: 2; transform-origin: 50% 50%; }
+    @keyframes spin { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }
+
+    .status { display: flex; flex-wrap: wrap; gap: .5rem; justify-content: center; margin-bottom: 1rem; }
+    .pill { padding: .35rem .8rem; border-radius: 999px; background: rgba(0,0,0,.35); font-size: .95rem; }
+    .pill.ok { background: var(--ok); } .pill.bad { background: var(--error); }
+
+    .tabs { display: flex; gap: 1rem; margin-bottom: 1rem; }
+    .tab-btn { padding: .5rem 1rem; cursor: pointer; border: none; border-radius: 5px; background: #fff; color: #000; }
+    .tab-btn.active { background: var(--accent); color: #fff; font-weight: bold; }
+    .tab { display: none; width: 100%; } .tab.active { display: flex; justify-content: center; }
+
+    .card { background: #fff; color: #000; padding: 20px; border-radius: 10px; box-shadow: 0 0 10px rgba(0,0,0,.3);
+            width: 100%; max-width: 640px; }
+    .chart-container { width: 100%; margin-bottom: 1.5rem; }
+    .controls { border: 1px solid #ccc; padding: 1em; border-radius: 8px; }
+    .controls h2 { margin-bottom: .5em; }
+    .controls label { display: inline-block; width: 150px; margin-bottom: .5em; }
+    .controls input[type=number] { width: 100px; margin-right: 10px; }
+    button.act { margin-top: 1em; padding: .5em 1em; cursor: pointer; border: none; border-radius: 5px; background: var(--primary); color: #fff; }
+    button.act.danger { background: var(--error); }
+    .live { margin-top: 1rem; line-height: 1.6; }
+
+    form label { display: block; font-weight: bold; margin: .8rem 0 .3rem; }
+    form input[type=text], form input[type=number] { width: 100%; padding: 10px; border-radius: 5px; border: 1px solid #ccc; font-size: 16px; }
+    .row { display: flex; align-items: center; gap: .6rem; margin-top: .8rem; }
+    form button { margin-top: 1.2rem; }
+    .hint { font-size: .85rem; color: #555; margin-top: .3rem; }
+    .msg { margin-top: .8rem; font-weight: bold; }
+    footer { margin-top: 1rem; text-shadow: 1px 1px #000; }
+  </style>
+</head>
+<body>
+  <canvas id="particleCanvas"></canvas>
+  <div class="container">
+    <div class="logo">
+      <div class="fan-stack">
+        <img class="fanshell" src="https://raw.githubusercontent.com/d14tk/BLSmartFlow/main/src/www/smartflow_shell.png" alt="">
+        <img class="fanblades" id="blades" src="https://raw.githubusercontent.com/d14tk/BLSmartFlow/main/src/www/smartflow_blades.png" alt="">
+      </div>
+      <span class="logo-text">BL SmartFlow</span>
+    </div>
+
+    <div class="status">
+      <span class="pill" id="pillPrinter">…</span>
+      <span class="pill" id="pillTemp">–</span>
+      <span class="pill" id="pillFan">–</span>
+    </div>
+
+    <div class="tabs">
+      <button class="tab-btn active" data-tab="curveTab" data-t="tabCurve"></button>
+      <button class="tab-btn" data-tab="settingsTab" data-t="tabSettings"></button>
+    </div>
+
+    <div id="curveTab" class="tab active">
+      <div class="card">
+        <div class="chart-container"><canvas id="myChart"></canvas></div>
+        <div class="controls">
+          <h2 data-t="points"></h2>
+          <button class="act" id="createPointBtn" data-t="newPoint"></button>
+          <div id="editSection" style="display:none">
+            <h3 style="margin-top:1em" data-t="selected"></h3>
+            <label for="edit-temp" data-t="tempLabel"></label>
+            <input id="edit-temp" type="number" min="0" max="500" step="1"><br>
+            <label for="edit-speed" data-t="fanLabel"></label>
+            <input id="edit-speed" type="number" min="0" max="100" step="1"><br>
+            <button class="act" id="editPointBtn" data-t="apply"></button>
+            <button class="act danger" id="removePointBtn" data-t="remove"></button>
+          </div>
+          <div class="msg" id="curveMsg"></div>
+        </div>
+        <div class="live">
+          <div><span data-t="nozzle"></span>: <span id="tempValue">–</span> °C</div>
+          <div><span data-t="fan"></span>: <span id="speedValue">–</span> %</div>
+          <div><span data-t="lastReport"></span>: <span id="ageValue">–</span></div>
+        </div>
+      </div>
+    </div>
+
+    <div id="settingsTab" class="tab">
+      <div class="card">
+        <form id="optForm">
+          <h2 data-t="printer"></h2>
+          <label for="printerip" data-t="ip"></label>
+          <input type="text" id="printerip" name="ip" required>
+          <label for="printercode" data-t="code"></label>
+          <input type="text" id="printercode" name="code" autocomplete="off">
+          <div class="hint" data-t="codeHint"></div>
+          <label for="printerserial" data-t="serial"></label>
+          <input type="text" id="printerserial" name="serial" required>
+
+          <h2 style="margin-top:1.2rem" data-t="fan"></h2>
+          <div class="row">
+            <input type="checkbox" id="staticfan" name="staticfan">
+            <label for="staticfan" style="margin:0" data-t="staticFan"></label>
+          </div>
+          <label for="staticfanspeed" data-t="staticSpeed"></label>
+          <input type="number" id="staticfanspeed" name="staticfanspeed" min="0" max="100" step="1">
+
+          <button class="act" type="submit" data-t="save"></button>
+          <button class="act danger" type="button" id="restartBtn" data-t="restart"></button>
+          <div class="msg" id="optMsg"></div>
+        </form>
+        <div class="live" id="sysInfo"></div>
+      </div>
+    </div>
+
+    <footer id="fw">Firmware: –</footer>
+  </div>
+
+  <script>
+    const I18N = {
+      en: {
+        tabCurve: 'Fan curve', tabSettings: 'Settings', points: 'Curve points', newPoint: 'New point',
+        selected: 'Selected point', tempLabel: 'Temperature (°C):', fanLabel: 'Fan (%):', apply: 'Apply',
+        remove: 'Remove', nozzle: 'Nozzle', fan: 'Fan', lastReport: 'Last printer report', printer: 'Printer',
+        ip: 'IP address', code: 'Access code', codeHint: 'The masked value is kept. Only type a new code to change it.',
+        serial: 'Serial number', staticFan: 'Fixed speed instead of curve', staticSpeed: 'Fixed speed (%)',
+        save: 'Save', restart: 'Restart', connected: 'Printer connected', noData: 'Printer: no data',
+        disconnected: 'Printer disconnected', unreachable: 'Device unreachable', none: 'none yet',
+        ago: s => s + ' s ago', saved: 'Saved', curveSaved: 'Curve saved', error: 'Error: ', offline: 'No connection to the device',
+        restartAsk: 'Restart the device?', restarting: 'Restarting …', minPoints: 'At least 2 points required',
+        maxPoints: 'At most 12 points', invalid: 'Invalid values', noChart: 'Chart.js could not be loaded (internet required).',
+        wifi: 'WiFi', uptime: 'Uptime', heap: 'Free RAM', reports: 'Printer reports', received: 'received', dropped: 'dropped',
+        axisX: 'Nozzle °C', axisY: 'Fan %'
+      },
+      de: {
+        tabCurve: 'Lüfterkurve', tabSettings: 'Einstellungen', points: 'Stützpunkte', newPoint: 'Neuer Punkt',
+        selected: 'Ausgewählter Punkt', tempLabel: 'Temperatur (°C):', fanLabel: 'Lüfter (%):', apply: 'Übernehmen',
+        remove: 'Entfernen', nozzle: 'Düse', fan: 'Lüfter', lastReport: 'Letzter Druckerbericht', printer: 'Drucker',
+        ip: 'IP-Adresse', code: 'Access-Code', codeHint: 'Maskierter Wert bleibt unverändert. Nur zum Ändern neu eingeben.',
+        serial: 'Seriennummer', staticFan: 'Feste Drehzahl statt Kurve', staticSpeed: 'Feste Drehzahl (%)',
+        save: 'Speichern', restart: 'Neustart', connected: 'Drucker verbunden', noData: 'Drucker: keine Daten',
+        disconnected: 'Drucker getrennt', unreachable: 'Gerät nicht erreichbar', none: 'noch keiner',
+        ago: s => 'vor ' + s + ' s', saved: 'Gespeichert', curveSaved: 'Kurve gespeichert', error: 'Fehler: ', offline: 'Keine Verbindung zum Gerät',
+        restartAsk: 'Gerät neu starten?', restarting: 'Startet neu …', minPoints: 'Mindestens 2 Punkte nötig',
+        maxPoints: 'Maximal 12 Punkte', invalid: 'Ungültige Werte', noChart: 'Chart.js konnte nicht geladen werden (Internet nötig).',
+        wifi: 'WLAN', uptime: 'Laufzeit', heap: 'Freier RAM', reports: 'Druckerberichte', received: 'empfangen', dropped: 'verworfen',
+        axisX: 'Düse °C', axisY: 'Lüfter %'
+      }
+    };
+    const LANG = (navigator.language || 'en').toLowerCase().startsWith('de') ? 'de' : 'en';
+    const T = I18N[LANG];
+    document.documentElement.lang = LANG;
+    document.querySelectorAll('[data-t]').forEach(el => { el.textContent = T[el.dataset.t]; });
+
+    const $ = id => document.getElementById(id);
+    document.querySelectorAll('.tab-btn').forEach(btn => btn.addEventListener('click', () => {
+      document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
+      document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
+      btn.classList.add('active');
+      $(btn.dataset.tab).classList.add('active');
+    }));
+
+    function flash(el, text, ok) {
+      el.textContent = text; el.style.color = ok ? 'green' : 'rgb(191,95,95)';
+      setTimeout(() => { el.textContent = ''; }, 4000);
+    }
+
+    // ---- settings
+    function loadOptions() {
+      return fetch('/getOptions').then(r => r.json()).then(c => {
+        $('fw').textContent = 'Firmware: ' + (c.firmwareversion || '?');
+        $('printerip').value = c.ip || '';
+        $('printercode').value = c.code || '';
+        $('printerserial').value = c.id || '';
+        $('staticfan').checked = !!c.staticfans;
+        $('staticfanspeed').value = c.staticfanspeed || 0;
+      }).catch(() => {});
+    }
+    $('optForm').addEventListener('submit', ev => {
+      ev.preventDefault();
+      const body = new URLSearchParams({
+        ip: $('printerip').value.trim(),
+        code: $('printercode').value.trim(),
+        serial: $('printerserial').value.trim(),
+        staticfan: $('staticfan').checked ? 'on' : 'off',
+        staticfanspeed: $('staticfanspeed').value || '0'
+      });
+      fetch('/submitOptions', { method: 'POST', headers: { 'Content-Type': 'application/x-www-form-urlencoded' }, body })
+        .then(r => r.text().then(t => flash($('optMsg'), r.ok ? T.saved : T.error + t, r.ok)))
+        .then(loadOptions)
+        .catch(() => flash($('optMsg'), T.offline, false));
+    });
+    $('restartBtn').addEventListener('click', () => {
+      if (!confirm(T.restartAsk)) return;
+      fetch('/api/restart', { method: 'POST', body: '' }).then(() => flash($('optMsg'), T.restarting, true));
+    });
+    function loadInfo() {
+      return fetch('/api/info').then(r => r.json()).then(i => {
+        $('sysInfo').innerHTML = '';
+        [[T.wifi, i.ssid + ' (' + i.rssi + ' dBm)'], ['IP', i.ip],
+         [T.uptime, Math.floor(i.uptime / 3600) + ' h ' + Math.floor(i.uptime % 3600 / 60) + ' min'],
+         [T.heap, Math.round(i.heap / 1024) + ' KB'], [T.reports, i.reports + ' ' + T.received + ', ' + i.dropped + ' ' + T.dropped]]
+          .forEach(([k, v]) => { const d = document.createElement('div'); d.textContent = k + ': ' + v; $('sysInfo').appendChild(d); });
+      }).catch(() => {});
+    }
+
+    // ---- live data
+    function setSpin(p) {
+      p = Math.max(0, Math.min(p, 100));
+      $('blades').style.animation = p === 0 ? 'none' : `spin ${0.5 + (1 - p / 100) * 4.5}s linear infinite`;
+    }
+    function fetchSensorData() {
+      return fetch('/sensorData').then(r => r.json()).then(j => {
+        const online = j.online;
+        $('pillPrinter').textContent = online ? T.connected : (j.mqtt ? T.noData : T.disconnected);
+        $('pillPrinter').className = 'pill ' + (online ? 'ok' : 'bad');
+        $('pillTemp').textContent = T.nozzle + ': ' + (online ? j.temp.toFixed(1) : '–') + ' °C';
+        $('pillFan').textContent = T.fan + ': ' + j.speed + ' %';
+        $('tempValue').textContent = online ? j.temp.toFixed(1) : '–';
+        $('speedValue').textContent = j.speed;
+        $('ageValue').textContent = j.age < 0 ? T.none : T.ago(j.age);
+        setSpin(j.speed);
+        markCurrent(online ? j.temp : null);
+      }).catch(() => {
+        $('pillPrinter').textContent = T.unreachable;
+        $('pillPrinter').className = 'pill bad';
+      });
+    }
+
+    // ---- fan curve
+    let points = [];
+    let selected = null;
+    let chart;
+
+    function chartData() { return points.map(p => ({ x: p.temp, y: p.speed })); }
+    function interpolate(t) {
+      if (!points.length) return 0;
+      if (t <= points[0].temp) return points[0].speed;
+      for (let i = 1; i < points.length; i++) {
+        if (t <= points[i].temp) {
+          const a = points[i - 1], b = points[i];
+          return b.temp === a.temp ? b.speed : a.speed + (t - a.temp) * (b.speed - a.speed) / (b.temp - a.temp);
+        }
+      }
+      return points[points.length - 1].speed;
+    }
+    function refreshStyles() {
+      chart.data.datasets[0].pointBackgroundColor = points.map((_, i) => i === selected ? 'red' : 'blue');
+      chart.data.datasets[0].pointRadius = points.map((_, i) => i === selected ? 8 : 5);
+    }
+    function redraw() { chart.data.datasets[0].data = chartData(); refreshStyles(); chart.update(); }
+    function markCurrent(t) {
+      if (!chart) return;
+      chart.data.datasets[1].data = t === null ? [] : [{ x: Math.min(t, 400), y: interpolate(t) }];
+      chart.update('none');
+    }
+
+    function saveCurve() {
+      if (points.length < 2) { flash($('curveMsg'), T.minPoints, false); return; }
+      const p = points.map(pt => Math.round(pt.temp) + ':' + Math.round(pt.speed)).join(',');
+      fetch('/updateFanConfig', { method: 'POST', headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+                                  body: new URLSearchParams({ p }) })
+        .then(r => r.text().then(t => flash($('curveMsg'), r.ok ? T.curveSaved : T.error + t, r.ok)))
+        .catch(() => flash($('curveMsg'), T.offline, false));
+    }
+    function sortPoints() { points.sort((a, b) => a.temp - b.temp); }
+    function select(i) {
+      selected = i;
+      $('editSection').style.display = i === null ? 'none' : 'block';
+      if (i !== null) { $('edit-temp').value = points[i].temp; $('edit-speed').value = points[i].speed; }
+      refreshStyles(); chart.update();
+    }
+
+    function initChart() {
+      chart = new Chart($('myChart'), {
+        type: 'line',
+        data: { datasets: [
+          { data: [], borderColor: 'blue', backgroundColor: 'rgba(0,0,255,.1)', fill: false, borderWidth: 3 },
+          { data: [], type: 'scatter', pointBackgroundColor: 'orange', pointBorderColor: '#000', pointRadius: 7, pointStyle: 'triangle' }
+        ] },
+        options: {
+          responsive: true,
+          scales: {
+            x: { type: 'linear', min: 0, max: 400, title: { display: true, text: T.axisX } },
+            y: { type: 'linear', min: 0, max: 100, title: { display: true, text: T.axisY } }
+          },
+          onClick: (evt, els) => {
+            const el = els.find(e => e.datasetIndex === 0);
+            if (el) select(el.index);
+          },
+          plugins: { legend: { display: false },
+            tooltip: { callbacks: { title: () => '', label: c => `${c.parsed.x} °C → ${Math.round(c.parsed.y)} %` } } }
+        }
+      });
+    }
+
+    $('createPointBtn').addEventListener('click', () => {
+      if (points.length >= 12) { flash($('curveMsg'), T.maxPoints, false); return; }
+      const np = { temp: 25, speed: 50 };
+      points.push(np); sortPoints(); redraw(); select(points.indexOf(np)); saveCurve();
+    });
+    $('editPointBtn').addEventListener('click', () => {
+      if (selected === null) return;
+      const t = parseFloat($('edit-temp').value), s = parseFloat($('edit-speed').value);
+      if (isNaN(t) || isNaN(s) || t < 0 || t > 500 || s < 0 || s > 100) { flash($('curveMsg'), T.invalid, false); return; }
+      const p = points[selected]; p.temp = t; p.speed = s;
+      sortPoints(); redraw(); select(points.indexOf(p)); saveCurve();
+    });
+    $('removePointBtn').addEventListener('click', () => {
+      if (selected === null) return;
+      if (points.length <= 2) { flash($('curveMsg'), T.minPoints, false); return; }
+      points.splice(selected, 1); redraw(); select(null); saveCurve();
+    });
+
+    window.addEventListener('DOMContentLoaded', () => {
+      // Sequential on purpose: the ESP32 has only a handful of sockets for HTTP clients
+      const curve = typeof Chart === 'undefined'
+        ? Promise.resolve($('curveMsg').textContent = T.noChart)
+        : (initChart(), fetch('/getFanConfig').then(r => r.json()).then(j => { points = j.points || []; sortPoints(); redraw(); }));
+      curve.catch(() => {})
+        .then(() => fetchSensorData())
+        .then(() => loadOptions())
+        .then(() => loadInfo())
+        .finally(() => {
+          setInterval(fetchSensorData, 2000);
+          setInterval(loadInfo, 15000);
+        });
+    });
+  </script>
+
+  <script>
+    const canvas = $('particleCanvas'), ctx = canvas.getContext('2d');
+    let parts = [];
+    function size() { canvas.width = innerWidth; canvas.height = innerHeight; }
+    function init() {
+      parts = Array.from({ length: 80 }, () => {
+        const s = Math.random() * 5 + 1;
+        return { x: Math.random() * (canvas.width - 2 * s) + s, y: Math.random() * (canvas.height - 2 * s) + s,
+                 dx: Math.random() * .5 - .25, dy: Math.random() * .5 - .25, s };
+      });
+    }
+    function animate() {
+      ctx.clearRect(0, 0, canvas.width, canvas.height);
+      for (const p of parts) {
+        if (p.x + p.s > canvas.width || p.x - p.s < 0) p.dx = -p.dx;
+        if (p.y + p.s > canvas.height || p.y - p.s < 0) p.dy = -p.dy;
+        p.x += p.dx; p.y += p.dy;
+        ctx.beginPath(); ctx.arc(p.x, p.y, p.s, 0, Math.PI * 2); ctx.fillStyle = 'rgba(255,255,255,.8)'; ctx.fill();
+      }
+      const lim = (canvas.width / 7) * (canvas.height / 7);
+      for (let a = 0; a < parts.length; a++) for (let b = a; b < parts.length; b++) {
+        const d = (parts[a].x - parts[b].x) ** 2 + (parts[a].y - parts[b].y) ** 2;
+        if (d < lim) {
+          ctx.strokeStyle = `rgba(255,255,255,${1 - d / 20000})`; ctx.lineWidth = 1;
+          ctx.beginPath(); ctx.moveTo(parts[a].x, parts[a].y); ctx.lineTo(parts[b].x, parts[b].y); ctx.stroke();
+        }
+      }
+      requestAnimationFrame(animate);
+    }
+    addEventListener('resize', () => { size(); init(); });
+    size(); init(); animate();
+  </script>
+</body>
+</html>

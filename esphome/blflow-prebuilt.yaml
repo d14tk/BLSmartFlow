@@ -1,0 +1,29 @@
+# Configuration of the ready-to-flash release binaries. Contains no credentials:
+# WiFi is set up after flashing (Improv via USB, the "BLSmartFlow Setup" hotspot, or
+# migrated automatically when upgrading from the original SmartFlow firmware).
+# Home Assistant can adopt the device through the ESPHome dashboard (dashboard_import).
+
+packages:
+  blsmartflow: !include common.yaml
+
+external_components:
+  - source: github://d14tk/BLSmartFlow@main
+    components: [blflow]
+    refresh: 1d
+
+dashboard_import:
+  package_import_url: github://d14tk/BLSmartFlow/esphome/blflow-prebuilt.yaml@main
+  import_full_config: false
+
+wifi:
+  ap:
+    ssid: BLSmartFlow Setup
+    password: blsmartflow
+
+improv_serial:
+
+api:
+  reboot_timeout: 0s
+
+ota:
+  - platform: esphome

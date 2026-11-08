@@ -1,0 +1,63 @@
+# Shared BL SmartFlow hardware and firmware definition.
+# Included by blflow.yaml (build yourself) and blflow-prebuilt.yaml (release binaries).
+# Override any substitution in the including file, e.g. different GPIOs for your board.
+
+substitutions:
+  name: blsmartflow
+  friendly_name: BL SmartFlow
+  version: "2.0.0"
+  fan_pin_1: GPIO17
+  fan_pin_2: GPIO16
+  status_led_pin: GPIO21
+  # The original SmartFlow board switches the fans through MOSFETs at 1 kHz
+  fan_pwm_frequency: 1000Hz
+
+esphome:
+  name: ${name}
+  friendly_name: ${friendly_name}
+  name_add_mac_suffix: false
+  project:
+    name: d14tk.blsmartflow
+    version: ${version}
+
+esp32:
+  board: esp32dev
+  flash_size: 4MB
+  framework:
+    type: esp-idf
+
+logger:
+  level: INFO
+
+captive_portal:
+
+status_led:
+  pin: ${status_led_pin}
+
+output:
+  - platform: ledc
+    id: fan_out_1
+    pin: ${fan_pin_1}
+    frequency: ${fan_pwm_frequency}
+  - platform: ledc
+    id: fan_out_2
+    pin: ${fan_pin_2}
+    frequency: ${fan_pwm_frequency}
+
+blflow:
+  fan_outputs: [fan_out_1, fan_out_2]
+  firmware_version: ${version}
+  nozzle_temperature:
+    name: Nozzle temperature
+  fan_speed:
+    name: Fan speed
+  printer_connected:
+    name: Printer connected
+
+sensor:
+  - platform: wifi_signal
+    name: WiFi signal
+    update_interval: 60s
+  - platform: uptime
+    name: Uptime
+    update_interval: 60s

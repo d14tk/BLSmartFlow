@@ -1,0 +1,24 @@
+# Lovelace card for BL SmartFlow (ESPHome firmware).
+# Add it via Dashboard -> Edit -> Add card -> Manual, and paste this file.
+# Entity IDs assume the default device name "blsmartflow"; adjust if you renamed it.
+type: vertical-stack
+cards:
+  - type: entities
+    title: BL SmartFlow
+    entities:
+      - entity: binary_sensor.blsmartflow_printer_connected
+        name: Printer
+      - entity: sensor.blsmartflow_nozzle_temperature
+        name: Nozzle
+      - entity: sensor.blsmartflow_fan_speed
+        name: Fan
+      - entity: sensor.blsmartflow_wifi_signal
+        name: WiFi
+  - type: history-graph
+    title: Last 6 hours
+    hours_to_show: 6
+    entities:
+      - entity: sensor.blsmartflow_nozzle_temperature
+        name: Nozzle °C
+      - entity: sensor.blsmartflow_fan_speed
+        name: Fan %
